@@ -1,0 +1,49 @@
+DisableFormat: true
+#BasedOnStyle: Google
+#IndentWidth: 2
+#ColumnLimit: 80
+#DerivePointerAlignment: false
+#PointerAlignment: Left
+#SortIncludes: true
+#AllowShortFunctionsOnASingleLine: Inline
+#
+#AllowShortIfStatementsOnASingleLine: WithoutElse
+#AllowShortBlocksOnASingleLine: Always
+#
+##Разбивает длинные списки инициализации конструктора
+#ConstructorInitializerAllOnOneLineOrOnePerLine: true
+#
+## 1. Выравнивание аргументов под скобкой
+#AlignAfterOpenBracket: DontAlign
+#
+## 2. Выравнивание макросов #define
+#AlignConsecutiveMacros: true
+#
+## 3. Автоматические комментарии в конце namespace
+#FixNamespaceComments: true
+#
+#
+## 6. Выравнивание инициализации в конструкторах (через двоеточие)
+#PackConstructorInitializers: NextLine
+#
+#AlignTrailingComments: true
+#
+#AlignOperands: Align
+#AlignArrayOfStructures: Left
+#
+#AlignConsecutiveBitFields:
+#  Enabled: true
+#  AcrossEmptyLines: false
+#  AcrossComments: true
+#
+#AlignEscapedNewlines: Right
+#
+#AlignConsecutiveAssignments:
+#  Enabled: true
+#  AcrossEmptyLines: false
+#  AcrossComments: true
+#  
+#AlignConsecutiveDeclarations:
+#  Enabled: true
+#  AcrossEmptyLines: false
+#  AcrossComments: true
