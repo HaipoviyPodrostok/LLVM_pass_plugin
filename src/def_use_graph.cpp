@@ -76,7 +76,23 @@ void DefUseGraph::makeDotFile() {
     const Value*   val = IDPair.first;
     const uint64_t id  = IDPair.second;
 
-    File << "  " << id << " [label=\"" << val->getNameOrAsOperand() << "\"];\n";
+    std::string LabelName;
+
+    if (auto* I = dyn_cast<Instruction>(val)) {
+      if (I->getType()->isVoidTy()) {
+        LabelName = I->getOpcodeName();
+      } 
+      else {
+        raw_string_ostream OS(LabelName);
+        I->printAsOperand(OS, false, &M);
+      }
+    } 
+    else {
+      raw_string_ostream OS(LabelName);
+      val->printAsOperand(OS, false, &M);
+    }
+
+    File << "  " << id << " [label=\"" << LabelName << "\"];\n";
   }
 
   for (Function& F : M) {
