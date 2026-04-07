@@ -1,8 +1,12 @@
 #include <cstdint>
+
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Plugins/PassPlugin.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/Support/FileSystem.h>
+
 #include <map>
 #include <sys/types.h>
 #include <system_error>
@@ -14,16 +18,6 @@ using namespace llvm;
 namespace {
 
 inline const std::string dotFile = "assets/dot_file.dot";
-
-struct GraphNode {
-  uint64_t ID;
-  std::string Label;
-};
-
-struct GraphEdge {
-  uint64_t From;
-  uint64_t To;
-};
 
 class DefUseGraph {
  public:
@@ -76,51 +70,56 @@ void DefUseGraph::makeDotFile() {
     return;
   }
   
-  File << "DefUseGraph {\n";
+  File << "digraph DefUseGraph {\n";
 
   for (auto const& IDPair : IDmap) {
-    Value*   val = IDPair.first;
-    uint64_t id  = IDPair.second;
+    const Value*   val = IDPair.first;
+    const uint64_t id  = IDPair.second;
 
     File << "  " << id << " [label=\"" << val->getNameOrAsOperand() << "\"];\n";
   }
 
-  for 
+  for (Function& F : M) {
     for (BasicBlock& BB : F) {
       for (Instruction& I : BB) {
-        uint64_t CurrentID = IDmap[&I];
-        for (Use &U : I.operands()) {
-          Value *Op = U.get();
+        const uint64_t CurrentID = IDmap[&I];
+
+        for (Use& U : I.operands()) {
+          Value* Op = U.get();
 
           if (IDmap.count(Op)) {
-            uint64_t OpID = IDmap[Op];
+            const uint64_t OpID = IDmap[Op];
             File << "  " << OpID << " -> " << CurrentID << ";\n";
           }
         }
       }
     }
+  }
+  
   File << "}\n";
 }
+} // namespace
 
-PreservedAnalyses DefUseGraphPass::run(Module& M, FunctionAnalysisManager& ) {
+PreservedAnalyses DefUseGraphPass::run(Module& M, ModuleAnalysisManager& ) {
+  DefUseGraph graph{M};
+  graph.buildAndSafe();
+
   return PreservedAnalyses::all();
 }
 
-} // namespace
-
-
-
 extern "C" ::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "HelloWorldPass", LLVM_VERSION_STRING,
+  return {LLVM_PLUGIN_API_VERSION, "DefUseGraphPass", LLVM_VERSION_STRING,
           [](PassBuilder &PB) {
             PB.registerPipelineParsingCallback(
-                [](StringRef Name, FunctionPassManager &FPM,
+                [](StringRef Name, ModulePassManager &MPM,
                    ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name == "hello-world") {
-                    FPM.addPass(DefUseGraphPass());
-                    return true;
-                  }
+                    if (Name == "def-use-graph") {
+                      MPM.addPass(DefUseGraphPass());
+                      return true;
+                    }
                   return false;
-                });
-          }};
+                }
+            );
+          }
+        };
 }

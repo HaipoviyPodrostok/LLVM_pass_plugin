@@ -12,5 +12,5 @@
 #include <llvm/IR/Analysis.h>
 
 struct DefUseGraphPass : llvm::PassInfoMixin<DefUseGraphPass> {
-  llvm::PreservedAnalyses run(llvm::Module& M, llvm::FunctionAnalysisManager& );  
+  llvm::PreservedAnalyses run(llvm::Module& M, llvm::ModuleAnalysisManager& );  
 };
