@@ -5,6 +5,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/Support/FileSystem.h>
 
 #include <map>
@@ -26,14 +27,19 @@ class DefUseGraph {
   void buildAndSafe() {
     indexation();
     makeDotFile();
+    addInstrumentation();
   }
   
  private:
   Module& M;
   std::map<Value*, uint64_t> IDmap;
 
+  FunctionCallee LogFunc;
+  Type* Int64Type;
+
   void indexation();
   void makeDotFile();
+  void addInstrumentation();
 };
 
 void DefUseGraph::indexation() {
@@ -84,12 +90,12 @@ void DefUseGraph::makeDotFile() {
       } 
       else {
         raw_string_ostream OS(LabelName);
-        I->printAsOperand(OS, false, &M);
+        I->print(OS, true);
       }
     } 
     else {
       raw_string_ostream OS(LabelName);
-      val->printAsOperand(OS, false, &M);
+      val->print(OS, true);
     }
 
     File << "  " << id << " [label=\"" << LabelName << "\"];\n";
@@ -114,6 +120,60 @@ void DefUseGraph::makeDotFile() {
   
   File << "}\n";
 }
+
+void DefUseGraph::addInstrumentation() {
+  LLVMContext& Context = M.getContext();
+
+  Int64Type = Type::getInt64Ty(Context);
+  LogFunc   = M.getOrInsertFunction("__log_value", Type::getVoidTy(Context),
+                                  Int64Type, Int64Type);
+
+  for (Function& F : M) {
+    if (F.isDeclaration()) continue;
+
+    IRBuilder<> Builder(&*F.getEntryBlock().getFirstInsertionPt());
+    
+    for (Argument& A : F.args()) {
+      const uint64_t ArgID = IDmap[&A];
+      
+      Value* IDConst       = Builder.getInt64(ArgID);
+      Value* CastedVal;
+      
+      if (A.getType()->isPointerTy()) {
+        CastedVal = Builder.CreatePtrToInt(&A, Int64Type);
+      } else {
+        CastedVal = Builder.CreateZExtOrBitCast(&A, Int64Type);
+      }
+      
+      Builder.CreateCall(LogFunc, {IDConst, CastedVal});
+    }
+
+    for (BasicBlock& BB : F) {
+      for (Instruction& I : BB) {
+
+        if (I.getType()->isVoidTy() || I.isTerminator() || isa<PHINode>(&I)) {
+          continue;
+        }
+
+        IRBuilder<> Builder(I.getNextNode());
+        
+        const uint64_t InstID  = IDmap[&I];
+        Value*         IDConst = Builder.getInt64(InstID);
+        
+        Value* CastedVal;
+
+        if (I.getType()->isPointerTy()) {
+          CastedVal = Builder.CreatePtrToInt(&I, Int64Type);
+        } else {
+          CastedVal = Builder.CreateZExtOrBitCast(&I, Int64Type);
+        }
+
+        Builder.CreateCall(LogFunc, {IDConst, CastedVal});
+      }
+    }
+  }                          
+}
+
 } // namespace
 
 PreservedAnalyses DefUseGraphPass::run(Module& M, ModuleAnalysisManager& ) {
