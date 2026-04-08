@@ -2,7 +2,6 @@
 #include <fstream>
 #include <string>
 #include <map>
-#include <regex>
 
 int main(int argc, char** argv) {
     if (argc < 4) {
@@ -25,9 +24,6 @@ int main(int argc, char** argv) {
         }
         val_file.close();
     }
-
-    std::regex node_regex(R"delim(^(\s*)(\d+)\s+\[label="(.*)"\];(.*)$)delim");
-    std::regex edge_regex(R"delim(^(\s*\d+\s*->\s*\d+\s*;.*)$)delim");
     
     std::ifstream dot_file(dot_path);
     if (!dot_file.is_open()) {
@@ -42,32 +38,34 @@ int main(int argc, char** argv) {
     }
 
     std::string line;
+    
     while (std::getline(dot_file, line)) {
-        std::smatch match;
-
-        if (std::regex_match(line, match, node_regex)) {
-            std::string indent = match[1];
-            std::string node_id = match[2];
-            std::string label = match[3];
-            std::string rest = match[4];
+        
+        if (line.find("->") != std::string::npos) {
+            out_file << line << "\n";
+        } 
+        else if (line.find("[label=\"") != std::string::npos) {
+            
+            size_t id_start = line.find_first_not_of(" \t");
+            size_t id_end   = line.find(" ", id_start);
+           
+            std::string node_id = line.substr(id_start, id_end - id_start);
 
             if (values.find(node_id) != values.end()) {
                 std::string val = values[node_id];
-                std::string new_label = label + " | VALUE=" + val;
-                out_file << indent << node_id << " [label=\"" << new_label 
-                         << "\", shape=record, style=filled, fillcolor=lightgrey];" << rest << "\n";
-            } else {
-                out_file << indent << node_id << " [label=\"" << label 
-                         << "\", shape=record, style=filled, fillcolor=lightgrey];" << rest << "\n";
+                
+                size_t insert_pos = line.find("\", shape=record");
+                
+                if (insert_pos != std::string::npos) {
+                    std::string string_start = line.substr(0, insert_pos);
+                    std::string string_end   = line.substr(insert_pos);
+                    
+                    out_file << string_start << " | VALUE=" << val << string_end << "\n";
+                    continue;
+                }
             }
-        } 
-        else if (std::regex_match(line, match, edge_regex)) {
-            std::string new_line = line;
-            size_t pos = new_line.find(';');
-            if (pos != std::string::npos) {
-                new_line.replace(pos, 1, " [color=pink, fontcolor=pink, label=\"user\"];");
-            }
-            out_file << new_line << "\n";
+            
+            out_file << line << "\n";
         } 
         else {
             out_file << line << "\n";

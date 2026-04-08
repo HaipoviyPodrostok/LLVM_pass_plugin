@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 void __log_value(uint64_t id, uint64_t val) {
-    FILE *file = fopen("assets/runtime_values.txt", "a");
+    FILE *file = fopen("assets/runtime_values/runtime_values.txt", "a");
     if (file == NULL) {
         return;
     }
