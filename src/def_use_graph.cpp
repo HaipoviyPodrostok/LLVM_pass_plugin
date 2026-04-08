@@ -233,6 +233,10 @@ void DefUseGraph::addInstrumentation() {
           continue;
         }
 
+        if (IDmap.find(&I) == IDmap.end()) {
+          continue;
+        }
+
         IRBuilder<> Builder(I.getNextNode());
         
         const uint64_t InstID  = IDmap[&I];

@@ -1,0 +1,56 @@
+# LLVM Def-Use Graph pass-plugin
+
+Этот проект реализует пасс-плагин для компилятора LLVM, который выполняет статический анализ промежуточного представления и генерирует граф потока данных с частичным отображением графа потока управления. Также реализована система инструментации для сбора значений переменных в процессе исполнения программы.
+
+## Зависимости
+* CMake (версия 3.14)
+* Инфраструктура LLVM
+* Clang
+* Graphviz (для отображения графа)
+
+## Сборка и запуск
+Перед запуском необходимо проверить есть ли папки:
+`assets/images/`, `assets/dot_files/` и `assets/runtime_values/`).
+
+### 1. Построение графа без инструментаций
+```bash
+rm -rf ./build/
+# Сборка пасс-плагина
+cmake -S . -B build && cmake --build build
+
+# Генерация IR (без инструментаций)
+clang++ -O0 -S -emit-llvm tests/test.cpp -o build/test.ll
+
+# Запуск пасс-плагина
+opt -load-pass-plugin ./build/libDefUseGraph.so -passes="def-use-graph" build/test.ll -disable-output
+
+# генерация графа
+dot -Tpng assets/dot_files/without_instrumentation.dot -o assets/images/without_instrumentation.png
+```
+
+### 2. Построение графа с инструментациями
+```bash
+rm -rf ./build/
+rm -f assets/runtime_values/runtime_values.txt
+
+# Сборка пасс-плагина и скрипта для вставки дампа value значений
+cmake -S . -B build && cmake --build build
+
+# Генерация IR
+clang++ -O0 -S -emit-llvm tests/test.cpp -o build/test.ll
+
+# Запуск плагина
+opt -load-pass-plugin ./build/libDefUseGraph.so -passes="def-use-graph" build/test.ll -S -o build/instrumented.ll
+
+# Сборка тестовой программы с внедренным с помощью пасса логером
+clang++ build/instrumented.ll -x c runtime/logger.c -o build/dump_values.x
+
+# Запуск тестовой программы 
+./build/dump_values.x 5 3
+
+# Вставка дампа значений в граф из пункта а (без инструментаций который)
+./build/merged_graph.x assets/dot_files/without_instrumentation.dot assets/runtime_values/runtime_values.txt assets/dot_files/with_instrumentation.dot
+
+# генерация графв
+dot -Tpng assets/dot_files/with_instrumentation.dot -o assets/images/with_instrumentation.png
+```
