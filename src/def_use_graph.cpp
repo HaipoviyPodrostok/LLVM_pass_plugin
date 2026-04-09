@@ -73,14 +73,16 @@ void DefUseGraph::indexation() {
 
 std::string DefUseGraph::escapeLabel(const std::string& raw) {
   std::string result;
+  
   for (char c : raw) {
-    if (c == '"')                                          result += "\\\"";
+    if (c == '"') { result += "\\\""; }
     else if (c == '<' || c == '>' || c == '{' || c == '}' || c == '|') {
       result += '\\';
       result += c;
     }
     else result += c;
   }
+  
   return result;
 }
 
