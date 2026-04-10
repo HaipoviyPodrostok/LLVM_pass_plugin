@@ -11,7 +11,7 @@
 #include <llvm/Demangle/Demangle.h>
 
 #include <map>
-#include <sys/types.h>
+#include <sys/types.h> // FIXME[flops]: Potentially unused
 #include <system_error>
 
 #include "def_use_graph.hpp"
@@ -20,6 +20,9 @@ using namespace llvm;
 
 namespace {
 
+// FIXME[flops]: Naming differs, pick one convention: dotFile -> DotFile, 
+
+// FIXME[flops]: Use constexpr std::string_view there instead, it's cheaper
 inline const std::string dotFile     = "assets/dot_files/without_instrumentation.dot";
 inline const std::string nodeStyle   = "\", shape=record, style=filled, fillcolor=lightgrey];\n";
 inline const std::string defUseStyle = " [color=red, fontcolor=red, label=\"user\"];\n";
@@ -29,15 +32,15 @@ class DefUseGraph {
  public:
   explicit DefUseGraph(Module& M) : M(M) {}
   
-  void buildAndSafe() {
-    indexation();
+  void buildAndSafe() { // FIXME[flops]: buildAndSave*
+    indexation(); // FIXME[flops]: better rename it makeIndexing, indexUnits e.t.c.
     makeDotFile();
     addInstrumentation();
   }
   
  private:
   Module& M;
-  std::map<Value*, uint64_t> IDmap;
+  std::map<Value*, uint64_t> IDmap; // FIXME[flops]: You don't need ordering there, so you can pick another container for those purposes: std::unordered_map / llvm::DenseMap e.t.c. std:: API is better, because LLVM API is unstable and it can change from version to version
 
   void indexation();
   void makeDotFile();
@@ -58,20 +61,22 @@ void DefUseGraph::indexation() {
     if (F.isDeclaration()) { continue; }
    
     for (Argument& A : F.args()) {
-      IDmap[&A] = NextID;
-      NextID++;
+        IDmap[&A] = NextID; // [flops]:  IDmap[&I] = NextID++; <---|
+        NextID++; // [flops]: You can make one liner there --------|
     }
 
     for (BasicBlock& BB : F) {
       for (Instruction& I : BB) {
-        IDmap[&I] = NextID;
-        NextID++;
+        IDmap[&I] = NextID; // [flops]:  IDmap[&I] = NextID++; <---|
+        NextID++; // [flops]: You can make one liner there --------|
       }
     }
   }
 }
 
-std::string DefUseGraph::escapeLabel(const std::string& raw) {
+std::string DefUseGraph::escapeLabel(const std::string& raw) { // TODO[flops]: Mark as static and const (does not depend on object state and doesn't change it too)
+                                                               // FIXME[flops]: std::string_view
+                                                               // [flops]: Also you can check complete solutions for this: llvm::raw_ostream::write_escaped, `llvm/Support/GraphWriter.h`
   std::string result;
   
   for (char c : raw) {
@@ -95,7 +100,7 @@ void DefUseGraph::makeDotFile() {
     return;
   }
   
-  File << "digraph DefUseGraph {\n";
+  File << "digraph DefUseGraph {\n"; // FIXME[flops]: Move all dot dump functionality in separate methods
   File << "  compound=true;\n";
 
   uint64_t clusterID = 0;
@@ -103,7 +108,7 @@ void DefUseGraph::makeDotFile() {
   for (Function& F : M) {
     if (F.isDeclaration()) { continue; }
 
-    if (F.arg_size() > 0) {
+    if (F.arg_size() > 0) { // FIXME[flops]: Separate method for args dumping
       File << "  subgraph cluster_" << clusterID++ << " {\n";
       File << "    label=\"" << llvm::demangle(F.getName().str()) << " args\";\n";
       File << "    style=dashed;\n";
@@ -121,7 +126,7 @@ void DefUseGraph::makeDotFile() {
     for (BasicBlock& BB : F) {
       File << "  subgraph cluster_" << clusterID++ << " {\n";
       
-      std::string bbName = BB.hasName() ? BB.getName().str() : "unnamed";
+      std::string bbName = BB.hasName() ? BB.getName().str() : "unnamed"; // FIXME[flops]: Unused value!
 
       File << "    label=\"" << llvm::demangle(F.getName().str()) << ": ";
       if (BB.hasName()) { File << BB.getName(); }
@@ -131,7 +136,7 @@ void DefUseGraph::makeDotFile() {
       for (Instruction& I : BB) {
         std::string label;
 
-        if (I.getType()->isVoidTy()) {
+        if (I.getType()->isVoidTy()) { // FIXME[flops]: You are doing exactly the same thing in both conditions
           raw_string_ostream OS(label);
           I.print(OS, true);
         } 
@@ -172,9 +177,9 @@ void DefUseGraph::makeDotFile() {
       Instruction* Term = BB.getTerminator();
       if (Term == nullptr) { continue; }
 
-      for (unsigned i = 0; i < Term->getNumSuccessors(); ++i) {
+      for (unsigned i = 0; i < Term->getNumSuccessors(); ++i) { // TODO[flops]: You can iterate through successors directly: for (auto *Succ: successors(Term))
         BasicBlock* Succ = Term->getSuccessor(i);
-        Instruction& FirstInst = Succ->front();
+        Instruction& FirstInst = Succ->front(); // [flops]: Better use Succ->getFirst<*>Inst
 
         File << "  " << IDmap[Term] << " -> " << IDmap[&FirstInst] << cfgStyle;
       }
@@ -235,13 +240,13 @@ void DefUseGraph::addInstrumentation() {
           continue;
         }
 
-        if (IDmap.find(&I) == IDmap.end()) {
-          continue;
-        }
-
-        IRBuilder<> Builder(I.getNextNode());
-        
-        const uint64_t InstID  = IDmap[&I];
+        if (IDmap.find(&I) == IDmap.end()) { // <--------------------------|
+          continue; //                                                       |
+        } //                                                                 |
+        //                                                                   |
+        IRBuilder<> Builder(I.getNextNode()); //                          |
+        //                                                                   |
+        const uint64_t InstID  = IDmap[&I]; // Just save it from find there -|
         Value*         IDConst = Builder.getInt64(InstID);
         
         Value* CastedVal;
@@ -263,7 +268,7 @@ PreservedAnalyses DefUseGraphPass::run(Module& M, ModuleAnalysisManager& ) {
   DefUseGraph graph{M};
   graph.buildAndSafe();
 
-  return PreservedAnalyses::all();
+  return PreservedAnalyses::all(); // There are cases when you instrument nothing, so it should return `PreservedAnalyses::none();`, otherwise return `PreservedAnalyses::all();`
 }
 
 extern "C" ::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {
