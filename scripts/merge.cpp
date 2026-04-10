@@ -3,17 +3,17 @@
 #include <string>
 #include <map>
 
-int main(int argc, char** argv) {
-    if (argc < 4) {
+int main(int argc, char** argv) { // TODO[flops]: Split it into separate funcs
+    if (argc < 4) { // TODO[flops]: !=, We need all 4 args
         std::cerr << "Usage: " << argv[0] << " <dot_file> <runtime_vals> <output_dot>\n";
         return 1;
     }
 
-    std::string dot_path = argv[1];
+    std::string dot_path = argv[1]; // TODO[flops]: std::string_view
     std::string val_path = argv[2];
     std::string out_path = argv[3];
 
-    std::map<std::string, std::string> values;
+    std::map<std::string, std::string> values; // FIXME[flops]: You don't need ordering there too
     std::ifstream val_file(val_path);
     if (!val_file.is_open()) {
         std::cerr << "Warning: " << val_path << " did not found.\n";
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     while (std::getline(dot_file, line)) {
         
         if (line.find("->") != std::string::npos) {
-            out_file << line << "\n";
+            out_file << line << "\n"; // FIXME[flops]: You do it in every condition edge, so you can move this operation from if and work only with `line.find("[label=\"")` case
         } 
         else if (line.find("[label=\"") != std::string::npos) {
             
@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    dot_file.close();
+    dot_file.close(); // FIXME[flops]: Close is unnecessary. RAII handles that
     out_file.close();
 
     std::cout << "Final graph built: " << out_path << "\n";
