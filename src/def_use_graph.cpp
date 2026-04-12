@@ -20,13 +20,13 @@ using namespace llvm;
 
 namespace {
 
-inline constexpr std::string_view dotFile =
+inline constexpr std::string_view DotFile =
   "assets/dot_files/without_instrumentation.dot";
-inline constexpr std::string_view nodeStyle =
+inline constexpr std::string_view NodeStyle =
   "\", shape=record, style=filled, fillcolor=lightgrey];\n";
-inline constexpr std::string_view defUseStyle =
+inline constexpr std::string_view DefUseStyle =
   " [color=red, fontcolor=red, label=\"user\"];\n";
-inline constexpr std::string_view cfgStyle = " [color=black, style=bold];\n";
+inline constexpr std::string_view CfgStyle = " [color=black, style=bold];\n";
 
 class DefUseGraph {
  public:
@@ -52,14 +52,14 @@ class DefUseGraph {
 class DotDumper {
  public:
   DotDumper(raw_fd_ostream& OS, std::unordered_map<Value*, uint64_t>& IDmap)
-    : OS(OS), IDmap(IDmap), clusterID(0) {}
+    : OS(OS), IDmap(IDmap), ClusterID(0) {}
 
   void dump(Module& M);
 
  private:
   // clang-format off
   raw_fd_ostream& OS;
-  uint64_t        clusterID;
+  uint64_t        ClusterID;
   const std::unordered_map<Value*, uint64_t>& IDmap;
   // clang-format on
 
@@ -99,14 +99,14 @@ void DefUseGraph::indexUnits() {
 void DefUseGraph::makeDotFile() {
   std::error_code EC;
 
-  raw_fd_ostream File(dotFile, EC, sys::fs::OF_Text);
+  raw_fd_ostream File(DotFile, EC, sys::fs::OF_Text);
   if (EC) {
     errs() << "File open error: " << EC.message() << "\n";
     return;
   }
 
-  DotDumper dumper {File, IDmap};
-  dumper.dump(M);
+  DotDumper Dumper {File, IDmap};
+  Dumper.dump(M);
 }
 
 void DotDumper::dump(Module& M) {
@@ -134,37 +134,37 @@ void DotDumper::writeDotHeader() const {
 }
 
 void DotDumper::dumpArgs(Function& F) {
-  OS << "  subgraph cluster_" << clusterID++ << " {\n";
+  OS << "  subgraph cluster_" << ClusterID++ << " {\n";
   OS << "    label=\"" << llvm::demangle(F.getName().str()) << " args\";\n";
   OS << "    style=dashed;\n";
 
   for (Argument& A : F.args()) {
-    std::string        label;
-    raw_string_ostream LabelOS(label);
+    std::string        Label;
+    raw_string_ostream LabelOS(Label);
     A.print(LabelOS, true);
 
-    OS << "    " << IDmap.at(&A) << " [label=\"" << llvm::DOT::EscapeString(label)
-       << nodeStyle;
+    OS << "    " << IDmap.at(&A) << " [label=\"" << llvm::DOT::EscapeString(Label)
+       << NodeStyle;
   }
   OS << "  }\n";
 }
 
 void DotDumper::dumpBBs(Function& F) {
   for (BasicBlock& BB : F) {
-    OS << "  subgraph cluster_" << clusterID++ << " {\n";
+    OS << "  subgraph cluster_" << ClusterID++ << " {\n";
     OS << "    label=\"" << llvm::demangle(F.getName().str()) << ": ";
     OS << BB.getName();  // TODO был if
     OS << "\";\n";
     OS << "    style=solid;\n";
 
     for (Instruction& I : BB) {
-      std::string label;
+      std::string Label;
 
-      raw_string_ostream LabelOS(label);
+      raw_string_ostream LabelOS(Label);
       I.print(LabelOS, true);
 
-      OS << "    " << IDmap.at(&I) << " [label=\"" << llvm::DOT::EscapeString(label)
-         << nodeStyle;
+      OS << "    " << IDmap.at(&I) << " [label=\"" << llvm::DOT::EscapeString(Label)
+         << NodeStyle;
     }
     OS << "  }\n";
   }
@@ -172,12 +172,12 @@ void DotDumper::dumpBBs(Function& F) {
 
 void DotDumper::dumpGlobals(Module& M) const {
   for (GlobalVariable& GV : M.globals()) {
-    std::string        label;
-    raw_string_ostream LabelOS(label);
+    std::string        Label;
+    raw_string_ostream LabelOS(Label);
     GV.printAsOperand(LabelOS, false, &M);
 
-    OS << "  " << IDmap.at(&GV) << " [label=\"" << llvm::DOT::EscapeString(label)
-       << nodeStyle;
+    OS << "  " << IDmap.at(&GV) << " [label=\"" << llvm::DOT::EscapeString(Label)
+       << NodeStyle;
   }
 }
 
@@ -192,7 +192,7 @@ void DotDumper::dumpCFGEdges(Module& M) const {
 
       for (Instruction& I : BB) {
         if (Prev != nullptr) {
-          OS << "  " << IDmap.at(Prev) << " -> " << IDmap.at(&I) << cfgStyle;
+          OS << "  " << IDmap.at(Prev) << " -> " << IDmap.at(&I) << CfgStyle;
         }
         Prev = &I;
       }
@@ -204,7 +204,7 @@ void DotDumper::dumpCFGEdges(Module& M) const {
 
       for (auto* Succ : successors(Term)) {
         Instruction* FirstInst = &*Succ->getFirstNonPHIOrDbg();
-        OS << "  " << IDmap.at(Term) << " -> " << IDmap.at(FirstInst) << cfgStyle;
+        OS << "  " << IDmap.at(Term) << " -> " << IDmap.at(FirstInst) << CfgStyle;
       }
     }
   }
@@ -221,7 +221,7 @@ void DotDumper::dumpDefUseEdges(Module& M) const {
 
           if (IDmap.count(Op)) {
             const uint64_t OpID = IDmap.at(Op);
-            OS << "  " << OpID << " -> " << CurrentID << defUseStyle;
+            OS << "  " << OpID << " -> " << CurrentID << DefUseStyle;
           }
         }
       }
@@ -271,15 +271,15 @@ void DefUseGraph::addInstrumentation() {
           continue;
         }
 
-        auto mapIt = IDmap.find(&I);
+        auto MapIt = IDmap.find(&I);
 
-        if (mapIt == IDmap.end()) {
+        if (MapIt == IDmap.end()) {
           continue;
         }
 
         IRBuilder<> Builder(I.getNextNode());
 
-        const uint64_t InstID  = mapIt->second;
+        const uint64_t InstID  = MapIt->second;
         Value*         IDConst = Builder.getInt64(InstID);
 
         Value* CastedVal;
@@ -299,8 +299,8 @@ void DefUseGraph::addInstrumentation() {
 }  // namespace
 
 PreservedAnalyses DefUseGraphPass::run(Module& M, ModuleAnalysisManager&) {
-  DefUseGraph graph {M};
-  graph.buildAndSave();
+  DefUseGraph Graph {M};
+  Graph.buildAndSave();
 
   return PreservedAnalyses::none();
 }
