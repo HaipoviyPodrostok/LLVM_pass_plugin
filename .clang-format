@@ -24,7 +24,6 @@
 #
 #
 ## 6. Выравнивание инициализации в конструкторах (через двоеточие)
-#PackConstructorInitializers: NextLine
 #
 #AlignTrailingComments: true
 #
@@ -50,10 +49,16 @@
 ---
 Language:      Cpp
 BasedOnStyle:  Google
-AccessModifierOffset: -2
+AccessModifierOffset: -1
+AlignArrayOfStructures: Left
 AlignAfterOpenBracket: Align
 AlignConsecutiveAssignments: true
+AlignConsecutiveBitFields:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: true
 AlignConsecutiveDeclarations: true
+AlignConsecutiveMacros: true
 AlignEscapedNewlines: Left
 AlignOperands:   Align
 AlignTrailingComments: true
@@ -90,14 +95,14 @@ BraceWrapping:
 BreakBeforeBinaryOperators: None
 BreakInheritanceList: AfterComma
 BreakBeforeTernaryOperators: false
-BreakConstructorInitializers: AfterColon
+BreakConstructorInitializers: BeforeColon
 BreakAfterJavaFieldAnnotations: false
 BreakStringLiterals: true
 ColumnLimit:     90
 CommentPragmas:  '^ IWYU pragma:'
 CompactNamespaces: false
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
-ConstructorInitializerIndentWidth: 8
+ConstructorInitializerIndentWidth: 2
 ContinuationIndentWidth: 2
 Cpp11BracedListStyle: true
 DerivePointerAlignment: false
@@ -179,7 +184,7 @@ RawStringFormats:
     CanonicalDelimiter: ''
     BasedOnStyle:    google
 ReflowComments:  true
-SortIncludes:    Never
+SortIncludes:    true
 SortUsingDeclarations: true
 SpaceAfterCStyleCast: false
 SpaceAfterTemplateKeyword: false
