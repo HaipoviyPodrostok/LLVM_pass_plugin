@@ -20,8 +20,6 @@ using namespace llvm;
 
 namespace {
 
-// FIXME[flops]: Naming differs, pick one convention: dotFile -> DotFile,
-
 inline constexpr std::string_view dotFile =
   "assets/dot_files/without_instrumentation.dot";
 inline constexpr std::string_view nodeStyle =
@@ -68,9 +66,9 @@ class DotDumper {
   void writeDotHeader() const;
   void dumpArgs(Function& F);
   void dumpBBs(Function& F);
-  void dumpGlobals(Module& M);
-  void dumpCFGEdges(Module& M);
-  void dumpDefUseEdges(Module& M);
+  void dumpGlobals(Module& M) const;
+  void dumpCFGEdges(Module& M) const;
+  void dumpDefUseEdges(Module& M) const;
   void writeDotEnd() const { OS << "}\n"; }
 };
 
@@ -162,8 +160,8 @@ void DotDumper::dumpBBs(Function& F) {
     for (Instruction& I : BB) {
       std::string label;
 
-      raw_string_ostream OS(label);
-      I.print(OS, true);
+      raw_string_ostream LabelOS(label);
+      I.print(LabelOS, true);
 
       OS << "    " << IDmap.at(&I) << " [label=\"" << llvm::DOT::EscapeString(label)
          << nodeStyle;
@@ -172,18 +170,18 @@ void DotDumper::dumpBBs(Function& F) {
   }
 }
 
-void DotDumper::dumpGlobals(Module& M) {
+void DotDumper::dumpGlobals(Module& M) const {
   for (GlobalVariable& GV : M.globals()) {
     std::string        label;
-    raw_string_ostream OS(label);
-    GV.printAsOperand(OS, false, &M);
+    raw_string_ostream LabelOS(label);
+    GV.printAsOperand(LabelOS, false, &M);
 
     OS << "  " << IDmap.at(&GV) << " [label=\"" << llvm::DOT::EscapeString(label)
        << nodeStyle;
   }
 }
 
-void DotDumper::dumpCFGEdges(Module& M) {
+void DotDumper::dumpCFGEdges(Module& M) const {
   for (Function& F : M) {
     if (F.isDeclaration()) {
       continue;
@@ -212,7 +210,7 @@ void DotDumper::dumpCFGEdges(Module& M) {
   }
 }
 
-void DotDumper::dumpDefUseEdges(Module& M) {
+void DotDumper::dumpDefUseEdges(Module& M) const {
   for (Function& F : M) {
     for (BasicBlock& BB : F) {
       for (Instruction& I : BB) {
@@ -232,10 +230,18 @@ void DotDumper::dumpDefUseEdges(Module& M) {
 }
 
 void DefUseGraph::addInstrumentation() {
-  LLVMContext&   Context   = M.getContext();
-  Type*          Int64Type = Type::getInt64Ty(Context);
+  LLVMContext& Context   = M.getContext();
+  Type*        Int64Type = Type::getInt64Ty(Context);
+
   FunctionCallee LogFunc =
     M.getOrInsertFunction("__log_value", Type::getVoidTy(Context), Int64Type, Int64Type);
+  FunctionCallee InitFunc = M.getOrInsertFunction("__log_init", Type::getVoidTy(Context));
+  Function*      MainFunc = M.getFunction("main");
+
+  BasicBlock& EntryBB = MainFunc->getEntryBlock();
+
+  IRBuilder<> InitBuilder(&*EntryBB.getFirstInsertionPt());
+  InitBuilder.CreateCall(InitFunc);
 
   for (Function& F : M) {
     if (F.isDeclaration())

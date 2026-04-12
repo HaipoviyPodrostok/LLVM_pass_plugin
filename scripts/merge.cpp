@@ -7,7 +7,8 @@
 static std::unordered_map<std::string, std::string> loadRuntimeValues(
   std::string_view path) {
   std::unordered_map<std::string, std::string> values;
-  std::ifstream                                val_file(path.data());
+
+  std::ifstream val_file(path.data());
 
   if (!val_file.is_open()) {
     std::cerr << "Warning: " << path << " did not found.\n";

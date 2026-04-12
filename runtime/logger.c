@@ -5,7 +5,7 @@
 static FILE* log_file = NULL;
 
 static void __log_close() {
-  if (log_file != NULL) {
+  if (log_file) {
     fclose(log_file);
   }
 }
@@ -25,7 +25,8 @@ void __log_init() {
 }
 
 void __log_value(uint64_t id, uint64_t val) {
-  if (log_file != NULL) {
-    fprintf(log_file, "%lu %lu\n", id, val);
+  if (!log_file) {
+    return;
   }
+  fprintf(log_file, "%lu %lu\n", id, val);
 }
