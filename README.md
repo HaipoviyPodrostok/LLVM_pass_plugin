@@ -31,7 +31,6 @@ dot -Tpng assets/dot_files/without_instrumentation.dot -o assets/images/without_
 ### 2. Построение графа с инструментациями
 ```bash
 rm -rf ./build/
-rm -f assets/runtime_values/runtime_values.txt
 
 # Сборка пасс-плагина и скрипта для вставки дампа value значений
 cmake -S . -B build && cmake --build build
@@ -45,7 +44,10 @@ opt -load-pass-plugin ./build/libDefUseGraph.so -passes="def-use-graph" build/te
 # Сборка тестовой программы с внедренным с помощью пасса логером
 clang++ build/instrumented.ll -x c runtime/logger.c -o build/dump_values.x
 
-# Запуск тестовой программы 
+# Экспорт пути к файлу логера (замените плейсхолдер на свой путь)
+export RUNTIME_VALUES_FILE_PATH="<ваш_абсолютный_путь_к_папке_проекта>/assets/runtime_values/runtime_values.txt"
+
+# запуск тестовой программы 
 ./build/dump_values.x 5 3
 
 # Вставка дампа значений в граф из пункта а (без инструментаций который)
