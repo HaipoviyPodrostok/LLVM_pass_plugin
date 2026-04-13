@@ -22,7 +22,7 @@ cmake -S . -B build && cmake --build build
 clang++ -O0 -S -emit-llvm tests/test.cpp -o build/test.ll
 
 # Запуск пасс-плагина
-opt -load-pass-plugin ./build/libDefUseGraph.so -passes="def-use-graph" build/test.ll -disable-output
+opt -load-pass-plugin ./build/DefUseGraph.so -passes="def-use-graph" build/test.ll -disable-output
 
 # генерация графа
 dot -Tpng assets/dot_files/without_instrumentation.dot -o assets/images/without_instrumentation.png
@@ -35,14 +35,8 @@ rm -rf ./build/
 # Сборка пасс-плагина и скрипта для вставки дампа value значений
 cmake -S . -B build && cmake --build build
 
-# Генерация IR
-clang++ -O0 -S -emit-llvm tests/test.cpp -o build/test.ll
-
-# Запуск плагина
-opt -load-pass-plugin ./build/libDefUseGraph.so -passes="def-use-graph" build/test.ll -S -o build/instrumented.ll
-
-# Сборка тестовой программы с внедренным с помощью пасса логером
-clang++ build/instrumented.ll -x c runtime/logger.c -o build/dump_values.x
+# Сборка тестовой программы с применением пасса
+clang++ -fpass-plugin=./build/DefUseGraph.so tests/test.cpp -x c runtime/logger.c -o build/dump_values.x
 
 # Экспорт пути к файлу логера (замените плейсхолдер на свой путь)
 export RUNTIME_VALUES_FILE_PATH="<ваш_абсолютный_путь_к_папке_проекта>/assets/runtime_values/runtime_values.txt"
@@ -55,4 +49,16 @@ export RUNTIME_VALUES_FILE_PATH="<ваш_абсолютный_путь_к_пап
 
 # генерация графв
 dot -Tpng assets/dot_files/with_instrumentation.dot -o assets/images/with_instrumentation.png
+```
+
+Запуска и генерацию графа можно автоматизировать скриптами `scripts/run_without_instr.sh` и `scripts/run_with_instr.sh`:
+```bash
+
+export RUNTIME_VALUES_FILE_PATH="<ваш_абсолютный_путь_к_папке_проекта>/assets/runtime_values/runtime_values.txt"
+
+# без инструментаций
+./scripts/run_without_instr.sh
+
+# с инструментациями
+./scripts/run_with_instr.sh 5 3
 ```

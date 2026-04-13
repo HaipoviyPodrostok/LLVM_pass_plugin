@@ -13,21 +13,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 
-set(SOURCES
+add_llvm_pass_plugin(DefUseGraph
     src/def_use_graph.cpp
-    scripts/merge.cpp
 )
 
-add_library(DefUseGraph MODULE ${SOURCES})
 target_include_directories(DefUseGraph PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/include    
     ${LLVM_INCLUDE_DIRS}
-)
-
-target_link_libraries(DefUseGraph ${LLVM_LDFLAGS})
-
-set_target_properties(DefUseGraph PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
 )
 
 add_executable(merged_graph.x scripts/merge.cpp)

@@ -51,7 +51,7 @@ class DefUseGraph {
 
 class DotDumper {
  public:
-  DotDumper(raw_fd_ostream& OS, std::unordered_map<Value*, uint64_t>& IDmap)
+  DotDumper(raw_fd_ostream& OS, const std::unordered_map<Value*, uint64_t>& IDmap)
     : OS(OS), IDmap(IDmap), ClusterID(0) {}
 
   void dump(Module& M);
@@ -112,7 +112,7 @@ void DefUseGraph::makeDotFile() {
 void DotDumper::dump(Module& M) {
   writeDotHeader();
 
-  for (llvm::Function& F : M) {
+  for (Function& F : M) {
     if (!F.isDeclaration()) {
       if (F.arg_size() > 0) {
         dumpArgs(F);
@@ -153,7 +153,7 @@ void DotDumper::dumpBBs(Function& F) {
   for (BasicBlock& BB : F) {
     OS << "  subgraph cluster_" << ClusterID++ << " {\n";
     OS << "    label=\"" << llvm::demangle(F.getName().str()) << ": ";
-    OS << BB.getName();  // TODO был if
+    OS << BB.getName();
     OS << "\";\n";
     OS << "    style=solid;\n";
 
@@ -234,8 +234,8 @@ void DefUseGraph::addInstrumentation() {
   Type*        Int64Type = Type::getInt64Ty(Context);
 
   FunctionCallee LogFunc =
-    M.getOrInsertFunction("__log_value", Type::getVoidTy(Context), Int64Type, Int64Type);
-  FunctionCallee InitFunc = M.getOrInsertFunction("__log_init", Type::getVoidTy(Context));
+    M.getOrInsertFunction("log_value", Type::getVoidTy(Context), Int64Type, Int64Type);
+  FunctionCallee InitFunc = M.getOrInsertFunction("log_init", Type::getVoidTy(Context));
   Function*      MainFunc = M.getFunction("main");
 
   BasicBlock& EntryBB = MainFunc->getEntryBlock();

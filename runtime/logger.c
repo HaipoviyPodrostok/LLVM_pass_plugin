@@ -1,16 +1,17 @@
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 static FILE* log_file = NULL;
 
-static void __log_close() {
+static void log_close() {
   if (log_file) {
     fclose(log_file);
   }
 }
 
-void __log_init() {
+void log_init() {
   const char* path = getenv("RUNTIME_VALUES_FILE_PATH");
   if (!path)
     path = "assets/runtime_values/runtime_values.txt";
@@ -21,12 +22,11 @@ void __log_init() {
     return;
   }
 
-  atexit(__log_close);
+  atexit(log_close);
 }
 
-void __log_value(uint64_t id, uint64_t val) {
-  if (!log_file) {
-    return;
-  }
+void log_value(uint64_t id, uint64_t val) {
+  assert(log_file);
+
   fprintf(log_file, "%lu %lu\n", id, val);
 }
