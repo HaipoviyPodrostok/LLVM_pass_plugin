@@ -25,8 +25,8 @@ static std::unordered_map<std::string, std::string> load_runtime_values(
   return values;
 }
 
-static bool mergeGraph(const std::string_view dot_path, const std::string_view out_path,
-                       const std::unordered_map<std::string, std::string>& values) {
+static bool merge_graph(const std::string_view dot_path, const std::string_view out_path,
+                        const std::unordered_map<std::string, std::string>& values) {
   std::ifstream dot_file(dot_path.data());
   if (!dot_file.is_open()) {
     std::cerr << "Error: Can not open " << dot_path << "\n";
@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
   const std::string_view out_path = argv[3];
 
   auto values = load_runtime_values(val_path);
-  if (!mergeGraph(dot_path, out_path, values)) {
+  if (!merge_graph(dot_path, out_path, values)) {
     return 1;
   }
 
