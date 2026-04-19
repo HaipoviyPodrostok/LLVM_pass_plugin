@@ -1,80 +1,88 @@
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <string>
-#include <map>
+#include <string_view>
+#include <unordered_map>
 
-int main(int argc, char** argv) { // TODO[flops]: Split it into separate funcs
-    if (argc < 4) { // TODO[flops]: !=, We need all 4 args
-        std::cerr << "Usage: " << argv[0] << " <dot_file> <runtime_vals> <output_dot>\n";
-        return 1;
-    }
+static std::unordered_map<std::string, std::string> load_runtime_values(
+  const std::string_view path) {
+  std::unordered_map<std::string, std::string> values;
 
-    std::string dot_path = argv[1]; // TODO[flops]: std::string_view
-    std::string val_path = argv[2];
-    std::string out_path = argv[3];
+  std::ifstream val_file(path.data());
 
-    std::map<std::string, std::string> values; // FIXME[flops]: You don't need ordering there too
-    std::ifstream val_file(val_path);
-    if (!val_file.is_open()) {
-        std::cerr << "Warning: " << val_path << " did not found.\n";
-    } else {
-        std::string id, val;
-        while (val_file >> id >> val) {
-            values[id] = val;
+  if (!val_file.is_open()) {
+    std::cerr << "Error: " << path << " did not found.\n";
+    return values;
+  }
+
+  std::string id;
+  std::string val;
+
+  while (val_file >> id >> val) {
+    values[id] = val;
+  }
+
+  return values;
+}
+
+static bool merge_graph(const std::string_view dot_path, const std::string_view out_path,
+                        const std::unordered_map<std::string, std::string>& values) {
+  std::ifstream dot_file(dot_path.data());
+  if (!dot_file.is_open()) {
+    std::cerr << "Error: Can not open " << dot_path << "\n";
+    return false;
+  }
+
+  std::ofstream out_file(out_path.data());
+  if (!out_file.is_open()) {
+    std::cerr << "Error: Can not open " << out_path << "\n";
+    return false;
+  }
+
+  std::string line;
+  while (std::getline(dot_file, line)) {
+    if (line.find("[label=\"") != std::string::npos) {
+      const size_t id_start = line.find_first_not_of(" \t");
+      const size_t id_end   = line.find(" ", id_start);
+
+      std::string node_id = line.substr(id_start, id_end - id_start);
+
+      if (values.find(node_id) != values.end()) {
+        std::string val = values.at(node_id);
+
+        const size_t insert_pos = line.find("\", shape=record");
+
+        if (insert_pos != std::string::npos) {
+          const std::string string_start = line.substr(0, insert_pos);
+          const std::string string_end   = line.substr(insert_pos);
+
+          out_file << string_start << " | VALUE=" << val << string_end << "\n";
+          continue;
         }
-        val_file.close();
-    }
-    
-    std::ifstream dot_file(dot_path);
-    if (!dot_file.is_open()) {
-        std::cerr << "Error: Can not open " << dot_path << "\n";
-        return 1;
+      }
     }
 
-    std::ofstream out_file(out_path);
-    if (!out_file.is_open()) {
-        std::cerr << "Error: Can not open " << out_path << "\n";
-        return 1;
-    }
+    out_file << line << "\n";
+  }
 
-    std::string line;
-    
-    while (std::getline(dot_file, line)) {
-        
-        if (line.find("->") != std::string::npos) {
-            out_file << line << "\n"; // FIXME[flops]: You do it in every condition edge, so you can move this operation from if and work only with `line.find("[label=\"")` case
-        } 
-        else if (line.find("[label=\"") != std::string::npos) {
-            
-            size_t id_start = line.find_first_not_of(" \t");
-            size_t id_end   = line.find(" ", id_start);
-           
-            std::string node_id = line.substr(id_start, id_end - id_start);
+  std::cout << "Final graph built: " << out_path << "\n";
+  return true;
+}
 
-            if (values.find(node_id) != values.end()) {
-                std::string val = values[node_id];
-                
-                size_t insert_pos = line.find("\", shape=record");
-                
-                if (insert_pos != std::string::npos) {
-                    std::string string_start = line.substr(0, insert_pos);
-                    std::string string_end   = line.substr(insert_pos);
-                    
-                    out_file << string_start << " | VALUE=" << val << string_end << "\n";
-                    continue;
-                }
-            }
-            
-            out_file << line << "\n";
-        } 
-        else {
-            out_file << line << "\n";
-        }
-    }
+int main(int argc, char** argv) {
+  if (argc != 4) {
+    std::cerr << "Usage: " << argv[0] << " <dot_file> <runtime_vals> <output_dot>\n";
+    return 1;
+  }
 
-    dot_file.close(); // FIXME[flops]: Close is unnecessary. RAII handles that
-    out_file.close();
+  const std::string_view dot_path = argv[1];
+  const std::string_view val_path = argv[2];
+  const std::string_view out_path = argv[3];
 
-    std::cout << "Final graph built: " << out_path << "\n";
-    return 0;
+  auto values = load_runtime_values(val_path);
+  if (!merge_graph(dot_path, out_path, values)) {
+    return 1;
+  }
+
+  return 0;
 }

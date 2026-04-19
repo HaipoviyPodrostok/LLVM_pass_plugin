@@ -1,289 +1,320 @@
-#include <cstdint>
+#include "def_use_graph.hpp"
 
+#include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Plugins/PassPlugin.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/IRBuilder.h>
 #include <llvm/Support/FileSystem.h>
-#include <llvm/Demangle/Demangle.h>
+#include <llvm/Support/GraphWriter.h>
+#include <llvm/Support/raw_ostream.h>
 
-#include <map>
-#include <sys/types.h> // FIXME[flops]: Potentially unused
+#include <cstdint>
 #include <system_error>
-
-#include "def_use_graph.hpp"
+#include <unordered_map>
 
 using namespace llvm;
 
 namespace {
 
-// FIXME[flops]: Naming differs, pick one convention: dotFile -> DotFile, 
-
-// FIXME[flops]: Use constexpr std::string_view there instead, it's cheaper
-inline const std::string dotFile     = "assets/dot_files/without_instrumentation.dot";
-inline const std::string nodeStyle   = "\", shape=record, style=filled, fillcolor=lightgrey];\n";
-inline const std::string defUseStyle = " [color=red, fontcolor=red, label=\"user\"];\n";
-inline const std::string cfgStyle    = " [color=black, style=bold];\n";
+inline constexpr std::string_view DotFile =
+  "assets/dot_files/without_instrumentation.dot";
+inline constexpr std::string_view NodeStyle =
+  "\", shape=record, style=filled, fillcolor=lightgrey];\n";
+inline constexpr std::string_view DefUseStyle =
+  " [color=red, fontcolor=red, label=\"user\"];\n";
+inline constexpr std::string_view CfgStyle = " [color=black, style=bold];\n";
 
 class DefUseGraph {
  public:
-  explicit DefUseGraph(Module& M) : M(M) {}
-  
-  void buildAndSafe() { // FIXME[flops]: buildAndSave*
-    indexation(); // FIXME[flops]: better rename it makeIndexing, indexUnits e.t.c.
+  explicit DefUseGraph(Module& M): M(M) {}
+
+  void buildAndSave() {
+    indexUnits();
     makeDotFile();
     addInstrumentation();
   }
-  
- private:
-  Module& M;
-  std::map<Value*, uint64_t> IDmap; // FIXME[flops]: You don't need ordering there, so you can pick another container for those purposes: std::unordered_map / llvm::DenseMap e.t.c. std:: API is better, because LLVM API is unstable and it can change from version to version
 
-  void indexation();
+ private:
+  // clang-format off
+  Module& M;
+  std::unordered_map<Value*, uint64_t> IDmap;
+  // clang-format on
+
+  void indexUnits();
   void makeDotFile();
   void addInstrumentation();
-
-  std::string escapeLabel(const std::string& raw);
 };
 
-void DefUseGraph::indexation() {
+class DotDumper {
+ public:
+  DotDumper(raw_fd_ostream& OS, const std::unordered_map<Value*, uint64_t>& IDmap)
+    : OS(OS), IDmap(IDmap), ClusterID(0) {}
+
+  void dump(Module& M);
+
+ private:
+  // clang-format off
+  raw_fd_ostream& OS;
+  uint64_t        ClusterID;
+  const std::unordered_map<Value*, uint64_t>& IDmap;
+  // clang-format on
+
+  void writeDotHeader() const;
+  void dumpArgs(Function& F);
+  void dumpBBs(Function& F);
+  void dumpGlobals(Module& M) const;
+  void dumpCFGEdges(Module& M) const;
+  void dumpDefUseEdges(Module& M) const;
+  void writeDotEnd() const { OS << "}\n"; }
+};
+
+void DefUseGraph::indexUnits() {
   uint64_t NextID = 1;
-  
+
   for (GlobalVariable& GV : M.globals()) {
-    IDmap[&GV] = NextID;
-    NextID++;
+    IDmap[&GV] = NextID++;
   }
 
   for (Function& F : M) {
-    if (F.isDeclaration()) { continue; }
-   
+    if (F.isDeclaration()) {
+      continue;
+    }
+
     for (Argument& A : F.args()) {
-        IDmap[&A] = NextID; // [flops]:  IDmap[&I] = NextID++; <---|
-        NextID++; // [flops]: You can make one liner there --------|
+      IDmap[&A] = NextID++;
     }
 
     for (BasicBlock& BB : F) {
       for (Instruction& I : BB) {
-        IDmap[&I] = NextID; // [flops]:  IDmap[&I] = NextID++; <---|
-        NextID++; // [flops]: You can make one liner there --------|
+        IDmap[&I] = NextID++;
       }
     }
   }
-}
-
-std::string DefUseGraph::escapeLabel(const std::string& raw) { // TODO[flops]: Mark as static and const (does not depend on object state and doesn't change it too)
-                                                               // FIXME[flops]: std::string_view
-                                                               // [flops]: Also you can check complete solutions for this: llvm::raw_ostream::write_escaped, `llvm/Support/GraphWriter.h`
-  std::string result;
-  
-  for (char c : raw) {
-    if (c == '"') { result += "\\\""; }
-    else if (c == '<' || c == '>' || c == '{' || c == '}' || c == '|') {
-      result += '\\';
-      result += c;
-    }
-    else result += c;
-  }
-  
-  return result;
 }
 
 void DefUseGraph::makeDotFile() {
   std::error_code EC;
 
-  raw_fd_ostream File(dotFile, EC, sys::fs::OF_Text);
+  raw_fd_ostream File(DotFile, EC, sys::fs::OF_Text);
   if (EC) {
     errs() << "File open error: " << EC.message() << "\n";
     return;
   }
-  
-  File << "digraph DefUseGraph {\n"; // FIXME[flops]: Move all dot dump functionality in separate methods
-  File << "  compound=true;\n";
 
-  uint64_t clusterID = 0;
+  DotDumper Dumper {File, IDmap};
+  Dumper.dump(M);
+}
+
+void DotDumper::dump(Module& M) {
+  writeDotHeader();
 
   for (Function& F : M) {
-    if (F.isDeclaration()) { continue; }
-
-    if (F.arg_size() > 0) { // FIXME[flops]: Separate method for args dumping
-      File << "  subgraph cluster_" << clusterID++ << " {\n";
-      File << "    label=\"" << llvm::demangle(F.getName().str()) << " args\";\n";
-      File << "    style=dashed;\n";
-
-      for (Argument& A : F.args()) {
-        std::string label;
-        raw_string_ostream OS(label);
-        A.print(OS, true);
-
-        File << "    " << IDmap[&A] << " [label=\"" << escapeLabel(label) << nodeStyle;
+    if (!F.isDeclaration()) {
+      if (F.arg_size() > 0) {
+        dumpArgs(F);
       }
-      File << "  }\n";
-    }
-
-    for (BasicBlock& BB : F) {
-      File << "  subgraph cluster_" << clusterID++ << " {\n";
-      
-      std::string bbName = BB.hasName() ? BB.getName().str() : "unnamed"; // FIXME[flops]: Unused value!
-
-      File << "    label=\"" << llvm::demangle(F.getName().str()) << ": ";
-      if (BB.hasName()) { File << BB.getName(); }
-      File << "\";\n";
-      File << "    style=solid;\n";
-
-      for (Instruction& I : BB) {
-        std::string label;
-
-        if (I.getType()->isVoidTy()) { // FIXME[flops]: You are doing exactly the same thing in both conditions
-          raw_string_ostream OS(label);
-          I.print(OS, true);
-        } 
-        else {
-          raw_string_ostream OS(label);
-          I.print(OS, true);
-        }
-
-        File << "    " << IDmap[&I] << " [label=\"" << escapeLabel(label) 
-             << nodeStyle;
-      }
-      File << "  }\n";
+      dumpBBs(F);
     }
   }
 
+  dumpGlobals(M);
+  dumpCFGEdges(M);
+  dumpDefUseEdges(M);
+
+  writeDotEnd();
+}
+
+void DotDumper::writeDotHeader() const {
+  OS << "digraph DefUseGraph {\n";
+  OS << "  compound=true;\n";
+}
+
+void DotDumper::dumpArgs(Function& F) {
+  OS << "  subgraph cluster_" << ClusterID++ << " {\n";
+  OS << "    label=\"" << llvm::demangle(F.getName().str()) << " args\";\n";
+  OS << "    style=dashed;\n";
+
+  for (Argument& A : F.args()) {
+    std::string        Label;
+    raw_string_ostream LabelOS(Label);
+    A.print(LabelOS, true);
+
+    OS << "    " << IDmap.at(&A) << " [label=\"" << llvm::DOT::EscapeString(Label)
+       << NodeStyle;
+  }
+  OS << "  }\n";
+}
+
+void DotDumper::dumpBBs(Function& F) {
+  for (BasicBlock& BB : F) {
+    OS << "  subgraph cluster_" << ClusterID++ << " {\n";
+    OS << "    label=\"" << llvm::demangle(F.getName().str()) << ": ";
+    OS << BB.getName();
+    OS << "\";\n";
+    OS << "    style=solid;\n";
+
+    for (Instruction& I : BB) {
+      std::string Label;
+
+      raw_string_ostream LabelOS(Label);
+      I.print(LabelOS, true);
+
+      OS << "    " << IDmap.at(&I) << " [label=\"" << llvm::DOT::EscapeString(Label)
+         << NodeStyle;
+    }
+    OS << "  }\n";
+  }
+}
+
+void DotDumper::dumpGlobals(Module& M) const {
   for (GlobalVariable& GV : M.globals()) {
-    std::string label;
-    raw_string_ostream OS(label);
-    GV.printAsOperand(OS, false, &M);
+    std::string        Label;
+    raw_string_ostream LabelOS(Label);
+    GV.printAsOperand(LabelOS, false, &M);
 
-    File << "  " << IDmap[&GV] << " [label=\"" << escapeLabel(label) << nodeStyle;
+    OS << "  " << IDmap.at(&GV) << " [label=\"" << llvm::DOT::EscapeString(Label)
+       << NodeStyle;
   }
+}
 
-
+void DotDumper::dumpCFGEdges(Module& M) const {
   for (Function& F : M) {
-    if (F.isDeclaration()) { continue; }
+    if (F.isDeclaration()) {
+      continue;
+    }
 
     for (BasicBlock& BB : F) {
-
       Instruction* Prev = nullptr;
+
       for (Instruction& I : BB) {
         if (Prev != nullptr) {
-          File << "  " << IDmap[Prev] << " -> " << IDmap[&I] << cfgStyle;
+          OS << "  " << IDmap.at(Prev) << " -> " << IDmap.at(&I) << CfgStyle;
         }
         Prev = &I;
       }
 
       Instruction* Term = BB.getTerminator();
-      if (Term == nullptr) { continue; }
+      if (Term == nullptr) {
+        continue;
+      }
 
-      for (unsigned i = 0; i < Term->getNumSuccessors(); ++i) { // TODO[flops]: You can iterate through successors directly: for (auto *Succ: successors(Term))
-        BasicBlock* Succ = Term->getSuccessor(i);
-        Instruction& FirstInst = Succ->front(); // [flops]: Better use Succ->getFirst<*>Inst
-
-        File << "  " << IDmap[Term] << " -> " << IDmap[&FirstInst] << cfgStyle;
+      for (auto* Succ : successors(Term)) {
+        Instruction* FirstInst = &*Succ->getFirstNonPHIOrDbg();
+        OS << "  " << IDmap.at(Term) << " -> " << IDmap.at(FirstInst) << CfgStyle;
       }
     }
   }
+}
 
-
+void DotDumper::dumpDefUseEdges(Module& M) const {
   for (Function& F : M) {
     for (BasicBlock& BB : F) {
       for (Instruction& I : BB) {
-        const uint64_t CurrentID = IDmap[&I];
+        const uint64_t CurrentID = IDmap.at(&I);
 
         for (Use& U : I.operands()) {
           Value* Op = U.get();
 
           if (IDmap.count(Op)) {
-            const uint64_t OpID = IDmap[Op];
-            File << "  " << OpID << " -> " << CurrentID << defUseStyle;
+            const uint64_t OpID = IDmap.at(Op);
+            OS << "  " << OpID << " -> " << CurrentID << DefUseStyle;
           }
         }
       }
     }
   }
-  
-  File << "}\n";
 }
 
 void DefUseGraph::addInstrumentation() {
-  LLVMContext&   Context   = M.getContext();
-  Type*          Int64Type = Type::getInt64Ty(Context);
-  FunctionCallee LogFunc   = M.getOrInsertFunction("__log_value", Type::getVoidTy(Context),
-                                  Int64Type, Int64Type);
+  LLVMContext& Context   = M.getContext();
+  Type*        Int64Type = Type::getInt64Ty(Context);
+
+  FunctionCallee LogFunc =
+    M.getOrInsertFunction("log_value", Type::getVoidTy(Context), Int64Type, Int64Type);
+  FunctionCallee InitFunc = M.getOrInsertFunction("log_init", Type::getVoidTy(Context));
+  Function*      MainFunc = M.getFunction("main");
+
+  BasicBlock& EntryBB = MainFunc->getEntryBlock();
+
+  IRBuilder<> InitBuilder(&*EntryBB.getFirstInsertionPt());
+  InitBuilder.CreateCall(InitFunc);
 
   for (Function& F : M) {
-    if (F.isDeclaration()) continue;
+    if (F.isDeclaration())
+      continue;
 
     IRBuilder<> Builder(&*F.getEntryBlock().getFirstInsertionPt());
-    
+
     for (Argument& A : F.args()) {
       const uint64_t ArgID = IDmap[&A];
-      
+
       Value* IDConst = Builder.getInt64(ArgID);
       Value* CastedVal;
-      
+
       if (A.getType()->isPointerTy()) {
         CastedVal = Builder.CreatePtrToInt(&A, Int64Type);
-      } else {
+      }
+      else {
         CastedVal = Builder.CreateZExtOrBitCast(&A, Int64Type);
       }
-      
+
       Builder.CreateCall(LogFunc, {IDConst, CastedVal});
     }
 
     for (BasicBlock& BB : F) {
       for (Instruction& I : BB) {
-
         if (I.getType()->isVoidTy() || I.isTerminator() || isa<PHINode>(&I)) {
           continue;
         }
 
-        if (IDmap.find(&I) == IDmap.end()) { // <--------------------------|
-          continue; //                                                       |
-        } //                                                                 |
-        //                                                                   |
-        IRBuilder<> Builder(I.getNextNode()); //                          |
-        //                                                                   |
-        const uint64_t InstID  = IDmap[&I]; // Just save it from find there -|
+        auto MapIt = IDmap.find(&I);
+
+        if (MapIt == IDmap.end()) {
+          continue;
+        }
+
+        IRBuilder<> Builder(I.getNextNode());
+
+        const uint64_t InstID  = MapIt->second;
         Value*         IDConst = Builder.getInt64(InstID);
-        
+
         Value* CastedVal;
 
         if (I.getType()->isPointerTy()) {
           CastedVal = Builder.CreatePtrToInt(&I, Int64Type);
-        } else {
+        }
+        else {
           CastedVal = Builder.CreateZExtOrBitCast(&I, Int64Type);
         }
 
         Builder.CreateCall(LogFunc, {IDConst, CastedVal});
       }
     }
-  }                          
+  }
 }
-} // namespace
+}  // namespace
 
-PreservedAnalyses DefUseGraphPass::run(Module& M, ModuleAnalysisManager& ) {
-  DefUseGraph graph{M};
-  graph.buildAndSafe();
+PreservedAnalyses DefUseGraphPass::run(Module& M, ModuleAnalysisManager&) {
+  DefUseGraph Graph {M};
+  Graph.buildAndSave();
 
-  return PreservedAnalyses::all(); // There are cases when you instrument nothing, so it should return `PreservedAnalyses::none();`, otherwise return `PreservedAnalyses::all();`
+  return PreservedAnalyses::none();
 }
 
 extern "C" ::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "DefUseGraphPass", LLVM_VERSION_STRING,
-          [](PassBuilder &PB) {
-            PB.registerPipelineParsingCallback(
-                [](StringRef Name, ModulePassManager& MPM,
-                   ArrayRef<PassBuilder::PipelineElement>) {
-                    if (Name == "def-use-graph") {
-                      MPM.addPass(DefUseGraphPass());
-                      return true;
-                    }
-                    return false;
-                }
-            );
-          }
-        };
+  return {
+    LLVM_PLUGIN_API_VERSION, "DefUseGraphPass", LLVM_VERSION_STRING, [](PassBuilder& PB) {
+      PB.registerPipelineParsingCallback([](StringRef Name, ModulePassManager& MPM,
+                                            ArrayRef<PassBuilder::PipelineElement>) {
+        if (Name == "def-use-graph") {
+          MPM.addPass(DefUseGraphPass());
+          return true;
+        }
+        return false;
+      });
+    }};
 }

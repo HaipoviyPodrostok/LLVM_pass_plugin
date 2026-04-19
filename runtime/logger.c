@@ -1,12 +1,32 @@
-#include <stdio.h>
+#include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-void __log_value(uint64_t id, uint64_t val) {
-    FILE *file = fopen("assets/runtime_values/runtime_values.txt", "a"); // FIXME[flops]: Don't use hardcoded path. Leave a possibility to change it. You can use `getenv` or common function to retrieve path to runtime values file
-    if (file == NULL) { // FIXME[flops]: Something very bad happened in this case, you should drop a loud warning at least
-        return;
-    }
+static FILE* log_file = NULL;
 
-    fprintf(file, "%lu %lu\n", id, val);
-    fclose(file);
+static void log_close() {
+  if (log_file) {
+    fclose(log_file);
+  }
+}
+
+void log_init() {
+  const char* path = getenv("RUNTIME_VALUES_FILE_PATH");
+  if (!path)
+    path = "assets/runtime_values/runtime_values.txt";
+
+  log_file = fopen(path, "w");
+  if (!log_file) {
+    fprintf(stderr, "[Logger] ERROR: Failed to open %s\n", path);
+    return;
+  }
+
+  atexit(log_close);
+}
+
+void log_value(uint64_t id, uint64_t val) {
+  assert(log_file);
+
+  fprintf(log_file, "%lu %lu\n", id, val);
 }
